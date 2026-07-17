@@ -1,0 +1,56 @@
+name: "Terraform CI/CD Pipeline"
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform_ci:
+    name: "Infrastructure Validation (CI)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Verify Code Formatting
+        run: terraform fmt -check
+
+      - name: Initialize Working Directory
+        run: terraform init
+
+      - name: Validate Syntax
+        run: terraform validate
+
+      - name: Generate Execution Plan
+        # Run plan on PR to allow peer review before merge
+        if: github.event_name == 'pull_request'
+        run: terraform plan -no-color
+
+  terraform_cd:
+    name: "Infrastructure Deployment (CD)"
+    needs: terraform_ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Initialize Working Directory
+        run: terraform init
+
+      - name: Execute Deployment
+        run: terraform apply -auto-approve
