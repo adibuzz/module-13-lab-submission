@@ -11,24 +11,17 @@ terraform {
 # Provider configuration for LocalStack
 provider "aws" {
   region                      = "us-east-1"
-  access_key                  = "mock_key"
-  secret_key                  = "mock_secret"
+  access_key                  = "mock_access_key"
+  secret_key                  = "mock_secret_key"
   skip_credentials_validation = true
   skip_metadata_api_check     = true
   skip_requesting_account_id  = true
+  
+  # Forces http://localhost:4566/bucket-name instead of http://bucket-name.localhost:4566
+  s3_use_path_style           = true
 
   endpoints {
-    s3 = "http://localhost:4566"
-  }
-}
-
-# Ephemeral resource for the pipeline deployment lab
-resource "aws_s3_bucket" "pipeline_bucket" {
-  bucket        = "module-13-pipeline-verification-bucket"
-  force_destroy = true
-
-  tags = {
-    Environment = "CI-CD-Testing"
-    ManagedBy   = "GitHubActions"
+    # LocalStack's wildcard loopback DNS guarantees it resolves to 127.0.0.1
+    s3 = "http://s3.localhost.localstack.cloud:4566" 
   }
 }
