@@ -16,19 +16,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Start LocalStack
-        uses: LocalStack/setup-localstack@main
-        with:
-          image-tag: 'latest'
-          install-awslocal: 'true'
-
-      - name: Wait for LocalStack
+      - name: Start MiniStack
         run: |
-          echo "Waiting for LocalStack S3 to be ready..."
-          until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\": \"\(available\|running\)\""; do
-            sleep 2
+          echo "Starting MiniStack container..."
+          docker run -d -p 4566:4566 ministackorg/ministack:latest
+
+      - name: Wait for MiniStack
+        run: |
+          echo "Waiting for MiniStack API to be ready..."
+          # MiniStack starts in ~2 seconds, but we poll the health endpoint to be safe
+          until curl -s -f http://localhost:4566/_ministack/health > /dev/null; do
+            sleep 1
           done
-          echo "LocalStack is ready!"
+          echo "MiniStack is ready!"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -51,6 +51,10 @@ jobs:
 
       - name: Verify Infrastructure State
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          AWS_ACCESS_KEY_ID: mock_key
+          AWS_SECRET_ACCESS_KEY: mock_secret
+          AWS_DEFAULT_REGION: us-east-1
         run: |
-          echo "Verifying bucket exists in runner's LocalStack environment..."
-          awslocal s3 ls | grep "module-13-pipeline-verification-bucket"
+          echo "Verifying bucket exists in runner's MiniStack environment..."
+          aws --endpoint-url=http://localhost:4566 s3 ls | grep "module-13-pipeline-verification-bucket"
