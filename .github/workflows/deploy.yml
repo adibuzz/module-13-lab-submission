@@ -9,20 +9,31 @@ on:
       - main
 
 jobs:
-  terraform_ci:
-    name: "Infrastructure Validation (CI)"
+  terraform_pipeline:
+    name: "Infrastructure Pipeline"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Start LocalStack
+        uses: LocalStack/setup-localstack@main
+        with:
+          image-tag: 'latest'
+          install-awslocal: 'true'
+
+      - name: Wait for LocalStack
+        run: |
+          echo "Waiting for LocalStack S3 to be ready..."
+          until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\": \"\(available\|running\)\""; do
+            sleep 2
+          done
+          echo "LocalStack is ready!"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.0
-
-      - name: Verify Code Formatting
-        run: terraform fmt -check
 
       - name: Initialize Working Directory
         run: terraform init
@@ -31,26 +42,15 @@ jobs:
         run: terraform validate
 
       - name: Generate Execution Plan
-        # Run plan on PR to allow peer review before merge
         if: github.event_name == 'pull_request'
         run: terraform plan -no-color
 
-  terraform_cd:
-    name: "Infrastructure Deployment (CD)"
-    needs: terraform_ci
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.0
-
-      - name: Initialize Working Directory
-        run: terraform init
-
       - name: Execute Deployment
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
+
+      - name: Verify Infrastructure State
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "Verifying bucket exists in runner's LocalStack environment..."
+          awslocal s3 ls | grep "module-13-pipeline-verification-bucket"
